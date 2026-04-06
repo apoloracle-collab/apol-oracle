@@ -28,16 +28,31 @@ except ImportError:
     PDF_AVAILABLE = False
 
 # ====================== 2. DATABASE & IDENTITY MANAGEMENT ======================
+db_status_msg = "⚪ Checking..."
+
 def get_db():
-    """Establishes a secure connection to the Firestore database."""
+    """Establishes a secure connection to the Firestore database with Diagnostics."""
+    global db_status_msg
     if not FIREBASE_AVAILABLE:
+        db_status_msg = "🔴 Shield Offline (Library Missing. Reboot App!)"
         return None
     try:
         if "FIREBASE_SERVICE_ACCOUNT" in st.secrets:
-            key_dict = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
+            try:
+                key_dict = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
+            except Exception as e:
+                db_status_msg = "🔴 Shield Offline (JSON Format Error in Secrets)"
+                return None
+            
             creds = service_account.Credentials.from_service_account_info(key_dict)
-            return firestore.Client(credentials=creds, project=key_dict["project_id"])
-    except:
+            client = firestore.Client(credentials=creds, project=key_dict["project_id"])
+            db_status_msg = "🟢 Shield Active (Database Secured)"
+            return client
+        else:
+            db_status_msg = "🔴 Shield Offline (Key not found in Secrets)"
+            return None
+    except Exception as e:
+        db_status_msg = "🔴 Shield Offline (Connection Failed)"
         return None
 
 db = get_db()
@@ -46,7 +61,15 @@ app_id = "apol-oracle"
 def get_user_id():
     """Identifies the user via IP to prevent credit reset on page refresh (F5)."""
     try:
-        user_ip = st.context.headers.get("X-Forwarded-For", "unknown_guest")
+        if hasattr(st, "context") and hasattr(st.context, "headers"):
+            user_ip = st.context.headers.get("X-Forwarded-For", "unknown")
+        else:
+            user_ip = "unknown"
+            
+        if user_ip == "unknown":
+            import socket
+            user_ip = socket.gethostname()
+            
         return hashlib.md5(user_ip.encode()).hexdigest()
     except:
         return "default_user_unique_id"
@@ -290,7 +313,11 @@ st.markdown("<p class='motto-text'>\"AI won't replace you. Someone using AI will
 st.sidebar.markdown("### 🛡️ CONTROL PANEL")
 st.sidebar.text_input("YOUR API KEY", type="password", key="user_api_key", help="Enter your Gemini key for unlimited mode.")
 st.sidebar.markdown("<a href='https://aistudio.google.com/app/apikey' target='_blank' style='color:#00FFC2; font-size:0.85rem;'>🔑 Get FREE API Key Here</a>", unsafe_allow_html=True)
-st.sidebar.caption(f"Device Credits: {current_usage} / {MAX_FREE_QUERIES}")
+
+# RADAR GÖSTERGESİ BURADA!
+st.sidebar.markdown("---")
+st.sidebar.caption(f"**System Status:** {db_status_msg}")
+st.sidebar.caption(f"**Device Credits:** {current_usage} / {MAX_FREE_QUERIES}")
 
 # TABS (Oracle & Roadmap)
 tab_oracle, tab_roadmap = st.tabs(["🔮 THE ORACLE", "🗺️ ROADMAP"])
