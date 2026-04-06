@@ -406,8 +406,24 @@ with tab_oracle:
 
         st.markdown("<div style='text-align: center; margin-top: 35px;'>", unsafe_allow_html=True)
         st.download_button(label="📄 DOWNLOAD EXECUTIVE DOSSIER (PDF)", data=generate_pdf(job, sector, calc['score'], calc['rank'], report), file_name=f"APOL_Report_{job}.pdf", mime="application/pdf")
+        st.markdown("</div>", unsafe_allow_html=True)
         
-        # ADVANCED X SHARING LOGIC
+        # ====================== SHARING & BADGE FLOW ======================
+        st.markdown("---")
+        
+        # 1. Map ranks to your precise filenames in the assets folder
+        img_filename = {
+            "THE NEW GENESIS": "the_new_genesis.png",
+            "CYBER-ORACLE": "cyber_oracle.png",
+            "CAPTAIN": "captain.png",
+            "HYBRID": "hybrid.png",
+            "THE ABYSS": "the_abyss.png",
+            "ZOMBIE": "zombie.png"  # In case this rank exists later
+        }.get(calc['rank'], "the_new_genesis.png")
+        
+        img_path = os.path.join("assets", img_filename)
+        
+        # Base Tweet Logic
         tweet_catchphrase = {
             "THE NEW GENESIS": "I am the future. Unstoppable, essential, and ready for the 2030s! 🚀",
             "CYBER-ORACLE": "Architecting the transition. Human intelligence meets AI mastery! 🔮",
@@ -418,8 +434,60 @@ with tab_oracle:
         }.get(calc['rank'], "Analyzing the future of labor.")
         
         x_tweet = f"🛡️ APOL 3.6 Career Protection Dossier: {job}\n\n📊 Score: {calc['score']}/100\n🏆 Rank: {calc['rank']}\n\n\"{tweet_catchphrase}\"\n\nCheck your shield: apol-oracle.streamlit.app @ApolOracle #APOL #AI #FutureOfWork"
-        st.markdown(f'<a href="https://twitter.com/intent/tweet?text={urllib.parse.quote(x_tweet)}" target="_blank" class="action-btn btn-x">𝕏 SHARE YOUR DESTINY ON X</a>', unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        x_url = f"https://twitter.com/intent/tweet?text={urllib.parse.quote(x_tweet)}"
+        
+        # 2. Check and Display Image Flow
+        if os.path.exists(img_path):
+            with open(img_path, "rb") as f:
+                img_bytes = f.read()
+                
+            # Create columns to center the image and buttons nicely
+            col_badge1, col_badge2, col_badge3 = st.columns([1, 1.5, 1])
+            with col_badge2:
+                # Display the large PNG Image
+                st.image(img_bytes, use_container_width=True)
+                
+                # Explanatory Text
+                st.markdown("""
+                <div style='text-align: center; margin-top: 15px; margin-bottom: 25px;'>
+                    <p style='font-size: 1.1rem; color: #E0E0E0;'><b>Bu senin APOL Shield nişanındır.</b><br>X’te paylaşırken bu görseli eklemeyi unutma!</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Side-by-Side Buttons
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.download_button(
+                        label="⬇️ Görseli İndir (PNG)",
+                        data=img_bytes,
+                        file_name=f"APOL_Nisan_{calc['rank'].replace(' ', '_')}.png",
+                        mime="image/png",
+                        use_container_width=True
+                    )
+                with c2:
+                    # Custom styled markdown button designed to perfectly match Streamlit's native button height
+                    st.markdown(f'''
+                    <a href="{x_url}" target="_blank" style="
+                        display: flex; 
+                        align-items: center; 
+                        justify-content: center; 
+                        background-color: #000000; 
+                        color: white; 
+                        text-decoration: none; 
+                        border: 1px solid #333; 
+                        border-radius: 8px; 
+                        height: 40px; 
+                        font-family: 'Inter', sans-serif;
+                        font-weight: 400; 
+                        font-size: 1rem;
+                        width: 100%;
+                    ">𝕏 X'te Paylaş</a>
+                    ''', unsafe_allow_html=True)
+        else:
+            # Fallback functionality if the image is missing from the server
+            st.warning(f"Sistem Uyarısı: Nişan görseli '{img_path}' klasörde bulunamadı. Lütfen GitHub deponuzu kontrol edin.")
+            st.markdown(f'<div style="text-align: center; margin-top: 20px;"><a href="{x_url}" target="_blank" class="action-btn btn-x">𝕏 SHARE YOUR DESTINY ON X</a></div>', unsafe_allow_html=True)
+
 
     # THE GENESIS (ABOUT US)
     st.markdown("---")
