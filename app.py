@@ -523,9 +523,11 @@ with tab_roadmap:
     # ASCENSION ROADMAP
     st.markdown("### 🗺️ APOL Ascension Roadmap")
     st.info("""
-    **🚀 Phase 1 (Current):** Global Launch, Core Oracle, PDF Dossiers, Advanced Metrics.  
-    **📄 Phase 2 (2-4 Months):** Deep Sector Analysis & AI Interview Simulator.  
-    **🌍 Phase 3 (4+ Months):** Live Job Market Sync & Autonomous Career Agent.
+    **🚀 Phase 1 – The Awakening (Current)** APOL is officially live. The powerful Oracle engine, rank analysis, professional PDF dossiers, and initial shields are active. We have shed the first light on thousands of careers.
+
+    **📄 Phase 2 – The Evolution (Within 2-4 Months)** Deep sector analysis, personalized ascension roadmaps, and the AI Interview Simulator are coming. Shields won't just protect you; they will elevate you to the next level.
+
+    **🌍 Phase 3 – The Genesis (4+ Months)** Live job market integration, Autonomous Career Agent, and a powerful ecosystem growing with the community. APOL will transcend being just a tool to become a true companion shaping your future.
     """)
     st.markdown("---")
     # LEGAL & PRIVACY
