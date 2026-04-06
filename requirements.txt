@@ -3,3 +3,4 @@ google-generativeai
 pandas
 plotly 
 reportlab
+google-cloud-firestore
