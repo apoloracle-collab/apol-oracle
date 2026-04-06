@@ -52,25 +52,32 @@ def get_db():
             db_status_msg = "🔴 Shield Offline (Key not found in Secrets)"
             return None
     except Exception as e:
-        db_status_msg = "🔴 Shield Offline (Connection Failed)"
+        db_status_msg = f"🔴 DB Init Error: {e}"
         return None
 
 db = get_db()
 app_id = "apol-oracle"
 
 def get_user_id():
-    """Identifies the user via IP to prevent credit reset on page refresh (F5)."""
+    """Advanced Fingerprinting: Uses IP subnet and User-Agent to prevent F5 resets."""
     try:
+        ip = "unknown"
+        user_agent = "unknown"
         if hasattr(st, "context") and hasattr(st.context, "headers"):
-            user_ip = st.context.headers.get("X-Forwarded-For", "unknown")
-        else:
-            user_ip = "unknown"
+            headers = st.context.headers
+            user_agent = headers.get("User-Agent", "unknown_agent")
             
-        if user_ip == "unknown":
-            import socket
-            user_ip = socket.gethostname()
+            if "X-Forwarded-For" in headers:
+                ip = headers["X-Forwarded-For"].split(",")[0].strip()
+            elif "Remote-Addr" in headers:
+                ip = headers["Remote-Addr"]
+        
+        # IP Kaymasını önlemek için IPv4'ün son bloğunu kırpıyoruz (Örn: 192.168.1.55 -> 192.168.1)
+        if "." in ip:
+            ip = ".".join(ip.split(".")[:3])
             
-        return hashlib.md5(user_ip.encode()).hexdigest()
+        fingerprint = f"{ip}-{user_agent}"
+        return hashlib.md5(fingerprint.encode()).hexdigest()
     except:
         return "default_user_unique_id"
 
@@ -190,16 +197,20 @@ user_id = get_user_id()
 MAX_FREE_QUERIES = 3 
 
 def get_current_usage():
-    """Fetches the query count from the database based on the user's fingerprint."""
+    global db_status_msg
     if not db: return st.session_state.fallback_usage
     try:
         doc_ref = db.collection("artifacts").document(app_id).collection("public").document("data").collection("usage").document(user_id)
         doc = doc_ref.get()
-        return doc.to_dict().get("count", 0) if doc.exists else 0
-    except: return st.session_state.fallback_usage
+        if doc.exists:
+            return doc.to_dict().get("count", 0)
+        return 0
+    except Exception as e:
+        db_status_msg = f"🔴 Read Error: {e}"
+        return st.session_state.fallback_usage
 
 def increment_usage():
-    """Increments and seals the query count permanently in the database."""
+    global db_status_msg
     if not db:
         st.session_state.fallback_usage += 1
         return
@@ -210,7 +221,9 @@ def increment_usage():
             doc_ref.update({"count": firestore.Increment(1), "last_access": time.time()})
         else:
             doc_ref.set({"count": 1, "last_access": time.time(), "created_at": time.time()})
-    except: st.session_state.fallback_usage += 1
+    except Exception as e:
+        db_status_msg = f"🔴 Write Error: {e}"
+        st.session_state.fallback_usage += 1
 
 current_usage = get_current_usage()
 
@@ -317,6 +330,7 @@ st.sidebar.markdown("<a href='https://aistudio.google.com/app/apikey' target='_b
 # RADAR GÖSTERGESİ BURADA!
 st.sidebar.markdown("---")
 st.sidebar.caption(f"**System Status:** {db_status_msg}")
+st.sidebar.caption(f"**Device ID:** {user_id[:6]}")
 st.sidebar.caption(f"**Device Credits:** {current_usage} / {MAX_FREE_QUERIES}")
 
 # TABS (Oracle & Roadmap)
