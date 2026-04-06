@@ -324,7 +324,7 @@ st.markdown("<p class='motto-text'>\"AI won't replace you. Someone using AI will
 
 # Sidebar (Control Panel)
 st.sidebar.markdown("### 🛡️ CONTROL PANEL")
-st.sidebar.text_input("YOUR API KEY", type="password", key="user_api_key", help="Enter your Gemini key for unlimited mode.")
+st.sidebar.text_input("YOUR API KEY", type="password", key="user_api_key", help="Enter your Gemini key for unlimited mode.", autocomplete="new-password")
 st.sidebar.markdown("<a href='https://aistudio.google.com/app/apikey' target='_blank' style='color:#00FFC2; font-size:0.85rem;'>🔑 Get FREE API Key Here</a>", unsafe_allow_html=True)
 
 # RADAR GÖSTERGESİ BURADA!
