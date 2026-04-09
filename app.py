@@ -72,7 +72,7 @@ def get_user_id():
             elif "Remote-Addr" in headers:
                 ip = headers["Remote-Addr"]
         
-        # IP Kaymasını önlemek için IPv4'ün son bloğunu kırpıyoruz (Örn: 192.168.1.55 -> 192.168.1)
+        # IP Kaymasını önlemek için IPv4'ün son bloğunu kırpıyoruz
         if "." in ip:
             ip = ".".join(ip.split(".")[:3])
             
@@ -167,26 +167,44 @@ st.markdown("""
     .btn-x { background-color: #000000; border: 1px solid #333; }
     .btn-x:hover { transform: translateY(-4px); box-shadow: 0 10px 20px rgba(255,255,255,0.15); }
     
-    /* Tabs Customization */
+    /* Tabs Customization & Badges */
     .stTabs [data-baseweb="tab-list"] { gap: 24px; justify-content: center; }
     .stTabs [data-baseweb="tab"] { height: 60px; font-weight: 700; font-size: 1.1rem; }
     .footer-link { color: #4B9BFF; text-decoration: none; font-size: 0.9rem; margin: 0 10px; opacity: 0.6; }
     .footer-link:hover { opacity: 1; color: #00FFC2; }
+    .science-badge { background-color: rgba(75, 155, 255, 0.1); border: 1px solid #4B9BFF; padding: 5px 15px; border-radius: 50px; font-size: 0.8rem; display: inline-block; margin-bottom: 10px; color: #4B9BFF; }
 </style>
 """, unsafe_allow_html=True)
 
-# ====================== 4. DATABASE LOADING ======================
+# ====================== 4. KARPATHY DATABASE LOADING ======================
 @st.cache_data
-def load_anchor_db():
+def load_karpathy_db():
+    """Reads occupations.json and scores.json from local folder to build a 342-profession database."""
     try:
-        with open("anchor_db.json", "r", encoding="utf-8") as f:
-            return json.load(f)
-    except: return {}
+        with open("occupations.json", "r", encoding="utf-8") as f:
+            occ_list = json.load(f)
+        with open("scores.json", "r", encoding="utf-8") as f:
+            scr_data = json.load(f)
+            scores_map = {s['slug']: s for s in scr_data}
+        
+        merged = {}
+        for occ in occ_list:
+            slug = occ['slug']
+            if slug in scores_map:
+                merged[occ['title']] = {
+                    "sector": occ.get('category', 'General').replace('-', ' ').title(),
+                    "exposure": scores_map[slug]['exposure'],
+                    "rationale": scores_map[slug]['rationale'],
+                    "slug": slug
+                }
+        return merged
+    except:
+        return {}
 
-ANCHOR_DB = load_anchor_db()
-PROFESSION_LIST = sorted(list(ANCHOR_DB.keys()))
+KARPATHY_DB = load_karpathy_db()
+PROFESSION_LIST = sorted(list(KARPATHY_DB.keys()))
 OTHER_OPTION = "Other (Custom Entry)"
-if ANCHOR_DB: PROFESSION_LIST.append(OTHER_OPTION)
+if KARPATHY_DB: PROFESSION_LIST.append(OTHER_OPTION)
 
 # Session State Persistence
 if "fallback_usage" not in st.session_state: st.session_state.fallback_usage = 0
@@ -269,13 +287,17 @@ def generate_pdf(job, sector, score, rank, report_text):
     p.save(); buffer.seek(0)
     return buffer
 
-# ====================== 7. GEMINI API & SCORING ENGINE ======================
+# ====================== 7. GEMINI API & SCIENTIFIC SCORING ENGINE ======================
 def call_gemini(prompt):
     keys = []
-    if "GEMINI_API_KEYS" in st.secrets:
-        s_keys = st.secrets["GEMINI_API_KEYS"]
-        keys = s_keys if isinstance(s_keys, list) else [s_keys]
-    if st.session_state.get("user_api_key"): keys = [st.session_state.user_api_key]
+    # Secure secrets check for local/cloud
+    try:
+        if "GEMINI_API_KEYS" in st.secrets:
+            s_keys = st.secrets["GEMINI_API_KEYS"]
+            keys = s_keys if isinstance(s_keys, list) else [s_keys]
+    except: pass
+    
+    if st.session_state.get("user_api_key"): keys = [st.session_state.user_api_key.strip()]
     
     if not keys: raise Exception("API Key Missing!")
     
@@ -285,32 +307,47 @@ def call_gemini(prompt):
             model = genai.GenerativeModel("models/gemini-3.1-flash-lite-preview")
             return model.generate_content(prompt).text
         except: continue
-    raise Exception("API Error: Rate limit reached.")
+    raise Exception("API Error: Rate limit reached or Key Invalid.")
 
-def calculate_oracle_score(job, experience):
-    """The master scoring engine with specific human-factor coefficients."""
-    anchor = ANCHOR_DB.get(job, list(ANCHOR_DB.values())[0] if ANCHOR_DB else {})
+def calculate_oracle_score(job, experience, forced_exposure=None):
+    """The master scoring engine powered by Karpathy Exposure data (0-10)."""
+    if forced_exposure is not None:
+        exposure = forced_exposure
+    else:
+        data = KARPATHY_DB.get(job, {"exposure": 5.0, "rationale": "Custom entry.", "sector": "General"})
+        exposure = data["exposure"]
+    
     job_lower = job.lower()
     
-    # Human Touch & Legal Responsibility Bonuses
-    high_touch = ["driver", "nurse", "officer", "chef", "captain", "soldier", "police", "surgeon", "athlete", "courier", "doctor", "guard"]
+    # Human Touch & Legal Responsibility Bonuses (Your original coefficients)
+    high_touch = ["nurse", "officer", "chef", "captain", "soldier", "police", "surgeon", "athlete", "courier", "doctor", "guard", "teacher", "plumber"]
     legal_roles = ["lawyer", "accountant", "cpa", "doctor", "judge", "attorney", "notary"]
     
     h_bonus = 14 if any(word in job_lower for word in high_touch) else 0
     l_bonus = 12 if any(word in job_lower for word in legal_roles) else 0
     
-    weighted = (
-        anchor.get("zombie_risk", 0) * -20 +
-        anchor.get("abyss_risk", 0) * -18 +
-        anchor.get("hybrid_fit", 0) * 25 +
-        anchor.get("captain_fit", 0) * 22 +
-        anchor.get("cyber_oracle_fit", 0) * 18 +
-        anchor.get("new_genesis_fit", 0) * 25 +
-        h_bonus + l_bonus
-    )
+    # Survival Score Logic: 100 - (Exposure * 10)
+    base_survival = 100 - (exposure * 10)
+    final_score = max(28, min(98, round(base_survival + h_bonus + l_bonus + min(experience * 1.1, 9))))
     
-    final_score = max(28, min(98, round(weighted + 5.0 + min(experience * 1.1, 9))))
-    return {"score": final_score, "rank": anchor.get("rank", "ANALYZING"), "color": anchor.get("color", "#F1C40F"), "matrix": anchor}
+    # Rank & Color Mapping
+    if final_score >= 85: rank, color = "THE NEW GENESIS", "#00FFC2"
+    elif final_score >= 70: rank, color = "CAPTAIN", "#4B9BFF"
+    elif final_score >= 50: rank, color = "CYBER-ORACLE", "#F1C40F"
+    elif final_score >= 35: rank, color = "HYBRID", "#E67E22"
+    elif final_score >= 15: rank, color = "THE ABYSS", "#E74C3C"
+    else: rank, color = "ZOMBIE", "#8E44AD"
+    
+    matrix = {
+        "zombie_risk": exposure / 10.0,
+        "abyss_risk": max(0.0, exposure - 3) / 7.0,
+        "hybrid_fit": max(0.0, 5.0 - abs(exposure - 5)) / 5.0,
+        "captain_fit": max(0.0, 10.0 - exposure - 3) / 7.0,
+        "cyber_oracle_fit": max(0.0, 10.0 - exposure - 1) / 9.0,
+        "new_genesis_fit": max(0.0, 10.0 - exposure) / 10.0
+    }
+    
+    return {"score": final_score, "rank": rank, "color": color, "matrix": matrix, "exposure": exposure}
 
 # ====================== 8. MAIN UI (BODY) ======================
 # Logo Area
@@ -324,17 +361,18 @@ st.markdown("<p class='motto-text'>\"AI won't replace you. Someone using AI will
 
 # Sidebar (Control Panel)
 st.sidebar.markdown("### 🛡️ CONTROL PANEL")
-st.sidebar.text_input("YOUR API KEY", type="password", key="user_api_key", help="Enter your Gemini key for unlimited mode.", autocomplete="new-password")
+st.sidebar.text_input("YOUR API KEY", type="password", key="user_api_key", help="Enter your Gemini key.")
 st.sidebar.markdown("<a href='https://aistudio.google.com/app/apikey' target='_blank' style='color:#00FFC2; font-size:0.85rem;'>🔑 Get FREE API Key Here</a>", unsafe_allow_html=True)
 
-# RADAR GÖSTERGESİ BURADA!
+# Status Area
 st.sidebar.markdown("---")
 st.sidebar.caption(f"**System Status:** {db_status_msg}")
 st.sidebar.caption(f"**Device ID:** {user_id[:6]}")
 st.sidebar.caption(f"**Device Credits:** {current_usage} / {MAX_FREE_QUERIES}")
+st.sidebar.info("🧬 **Scientific Mode:** Powered by Karpathy Exposure Model.")
 
-# TABS (Oracle & Roadmap)
-tab_oracle, tab_roadmap = st.tabs(["🔮 THE ORACLE", "🗺️ ROADMAP"])
+# ====================== TABS (Oracle, Methodology & Roadmap) ======================
+tab_oracle, tab_methodology, tab_roadmap = st.tabs(["🔮 THE ORACLE", "🔬 METHODOLOGY", "🗺️ ROADMAP"])
 
 with tab_oracle:
     if current_usage >= MAX_FREE_QUERIES and not st.session_state.get("user_api_key"):
@@ -358,8 +396,7 @@ with tab_oracle:
                 final_job = st.text_input("Enter Profession")
                 final_sector = st.text_input("Enter Industry")
             else:
-                final_job = selected
-                final_sector = ANCHOR_DB[selected]["sector"]
+                final_job, final_sector = selected, KARPATHY_DB[selected]["sector"]
                 st.info(f"📍 Industry: **{final_sector}**")
         with col_in2:
             exp_in = st.slider("EXPERIENCE (YEARS)", 0, 40, 5)
@@ -368,10 +405,30 @@ with tab_oracle:
         # EXECUTE BUTTON
         if st.button("EXECUTE PROPHECY", use_container_width=True, type="primary"):
             if final_job and final_sector:
-                with st.spinner("Oracle is processing..."):
+                with st.spinner("Oracle is processing scientific data..."):
                     try:
-                        calc = calculate_oracle_score(final_job, exp_in)
-                        prompt = f"Analyze career for {final_job} in {final_sector}. Score: {calc['score']}. Use headers: 🚨 MARKET PULSE, 🛡️ PROTECTION SHIELD, ⚔️ HUMAN FORTRESS, 🔮 ASCENSION ROADMAP. Professional English only."
+                        # Dynamic AI Scoring for custom entries (Agent logic)
+                        exposure_to_use = None
+                        if selected == OTHER_OPTION or final_job not in KARPATHY_DB:
+                            score_prompt = f"GIVE ME ONLY A NUMBER: On a scale of 0 to 10, what is the scientific AI Exposure index for the job '{final_job}'? (0: Minimal risk, 10: Maximum risk). Provide ONLY the number."
+                            ai_score_str = call_gemini(score_prompt).strip()
+                            try: exposure_to_use = float(ai_score_str)
+                            except: exposure_to_use = 5.0
+                        
+                        calc = calculate_oracle_score(final_job, exp_in, forced_exposure=exposure_to_use)
+                        
+                        # Sarkastik Oracle Prompt (Personality logic)
+                        prompt = f"""
+                        Analyze career for {final_job} in {final_sector}. 
+                        User: {exp_in} yrs exp, Skills: {skills_in}. 
+                        Score: {calc['score']}/100. AI Exposure: {calc['exposure']}/10.
+
+                        INSTRUCTIONS:
+                        1. If '{final_job}' is nonsense or irrelevant, start with a witty, sarcastic oracle comment.
+                        2. Proceed with rigorous analysis using headers: 🚨 MARKET PULSE, 🛡️ PROTECTION SHIELD, ⚔️ HUMAN FORTRESS, 🔮 ASCENSION ROADMAP.
+                        3. Tone: Professional yet Oracle-like dark-tech aesthetic.
+                        4. Professional English only.
+                        """
                         report = call_gemini(prompt)
                         
                         # Persistent credit update
@@ -398,7 +455,7 @@ with tab_oracle:
         with col_res1: st.markdown(f'<div class="report-box">{report}</div>', unsafe_allow_html=True)
         with col_res2:
             # Radar Chart
-            m_data = {k: v*100 for k,v in calc['matrix'].items() if k.endswith("_risk") or k.endswith("_fit")}
+            m_data = {k.replace('_', ' ').upper(): v*100 for k,v in calc['matrix'].items() if k.endswith("_risk") or k.endswith("_fit")}
             fig = go.Figure()
             fig.add_trace(go.Scatterpolar(r=list(m_data.values()), theta=list(m_data.keys()), fill='toself', line_color=calc['color']))
             fig.update_layout(polar=dict(radialaxis=dict(visible=False)), template="plotly_dark", margin=dict(l=30,r=30,t=30,b=30), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
@@ -408,86 +465,43 @@ with tab_oracle:
         st.download_button(label="📄 DOWNLOAD EXECUTIVE DOSSIER (PDF)", data=generate_pdf(job, sector, calc['score'], calc['rank'], report), file_name=f"APOL_Report_{job}.pdf", mime="application/pdf")
         st.markdown("</div>", unsafe_allow_html=True)
         
-        # ====================== SHARING & BADGE FLOW ======================
+        # ====================== SHARING & BADGE FLOW (Corrected Images) ======================
         st.markdown("---")
         
-        # 1. Map ranks to your precise filenames in the assets folder
         img_filename = {
             "THE NEW GENESIS": "the_new_genesis.png",
             "CYBER-ORACLE": "cyber_oracle.png",
             "CAPTAIN": "captain.png",
             "HYBRID": "hybrid.png",
             "THE ABYSS": "the_abyss.png",
-            "ZOMBIE": "zombie.png"  # In case this rank exists later
+            "ZOMBIE": "zombie.png"
         }.get(calc['rank'], "the_new_genesis.png")
         
         img_path = os.path.join("assets", img_filename)
         
-        # Base Tweet Logic
         tweet_catchphrase = {
             "THE NEW GENESIS": "I am the future. Unstoppable, essential, and ready for the 2030s! 🚀",
-            "CYBER-ORACLE": "Architecting the transition. Human intelligence meets AI mastery! 🔮",
+            "CYBER-ORACLE": "Architecting the transition. Human intelligence meets mastery! 🔮",
             "CAPTAIN": "Holding the line with high-stakes human expertise. Unreplaceable! ⚔️",
             "HYBRID": "Adapting and evolving. AI is my co-pilot, not my replacement! ⚖️",
             "THE ABYSS": "At the edge of transformation. Strategic pivot is in progress! 🌊",
             "ZOMBIE": "Warning: High automation risk detected. Time to upgrade the human core! 🧟"
         }.get(calc['rank'], "Analyzing the future of labor.")
         
-        x_tweet = f"🛡️ APOL 3.6 Career Protection Dossier: {job}\n\n📊 Score: {calc['score']}/100\n🏆 Rank: {calc['rank']}\n\n\"{tweet_catchphrase}\"\n\nCheck your shield: apol-oracle.streamlit.app @ApolOracle #APOL #AI #FutureOfWork"
+        x_tweet = f"🛡️ APOL 3.6 Career Protection Dossier: {job}\n\n📊 Score: {calc['score']}/100\n🏆 Rank: {calc['rank']}\n🧬 Powered by Karpathy AI Model\n\n\"{tweet_catchphrase}\"\n\nCheck yours: apol-oracle.streamlit.app @ApolOracle #APOL #AI"
         x_url = f"https://twitter.com/intent/tweet?text={urllib.parse.quote(x_tweet)}"
         
-        # 2. Check and Display Image Flow
         if os.path.exists(img_path):
-            with open(img_path, "rb") as f:
-                img_bytes = f.read()
-                
-            # Create columns to center the image and buttons nicely
+            with open(img_path, "rb") as f: img_bytes = f.read()
             col_badge1, col_badge2, col_badge3 = st.columns([1, 1.5, 1])
             with col_badge2:
-                # Display the large PNG Image
                 st.image(img_bytes, use_container_width=True)
-                
-                # Explanatory Text
-                st.markdown("""
-                <div style='text-align: center; margin-top: 15px; margin-bottom: 25px;'>
-                    <p style='font-size: 1.1rem; color: #E0E0E0;'><b>Bu senin APOL Shield nişanındır.</b><br>X’te paylaşırken bu görseli eklemeyi unutma!</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Side-by-Side Buttons
+                st.markdown("""<div style='text-align: center; margin-top: 15px; margin-bottom: 25px;'><p style='font-size: 1.1rem; color: #E0E0E0;'><b>Bu senin APOL Shield nişanındır.</b><br>X’te paylaşırken bu görseli eklemeyi unutma!</p></div>""", unsafe_allow_html=True)
                 c1, c2 = st.columns(2)
-                with c1:
-                    st.download_button(
-                        label="⬇️ Görseli İndir (PNG)",
-                        data=img_bytes,
-                        file_name=f"APOL_Nisan_{calc['rank'].replace(' ', '_')}.png",
-                        mime="image/png",
-                        use_container_width=True
-                    )
-                with c2:
-                    # Custom styled markdown button designed to perfectly match Streamlit's native button height
-                    st.markdown(f'''
-                    <a href="{x_url}" target="_blank" style="
-                        display: flex; 
-                        align-items: center; 
-                        justify-content: center; 
-                        background-color: #000000; 
-                        color: white; 
-                        text-decoration: none; 
-                        border: 1px solid #333; 
-                        border-radius: 8px; 
-                        height: 40px; 
-                        font-family: 'Inter', sans-serif;
-                        font-weight: 400; 
-                        font-size: 1rem;
-                        width: 100%;
-                    ">𝕏 X'te Paylaş</a>
-                    ''', unsafe_allow_html=True)
+                with c1: st.download_button(label="⬇️ Görseli İndir (PNG)", data=img_bytes, file_name=f"APOL_Badge_{calc['rank']}.png", mime="image/png", use_container_width=True)
+                with c2: st.markdown(f'<a href="{x_url}" target="_blank" style="display: flex; align-items: center; justify-content: center; background-color: #000000; color: white; text-decoration: none; border: 1px solid #333; border-radius: 8px; height: 40px; font-family: \'Inter\', sans-serif; font-weight: 400; font-size: 1rem; width: 100%;">𝕏 X\'te Paylaş</a>', unsafe_allow_html=True)
         else:
-            # Fallback functionality if the image is missing from the server
-            st.warning(f"Sistem Uyarısı: Nişan görseli '{img_path}' klasörde bulunamadı. Lütfen GitHub deponuzu kontrol edin.")
             st.markdown(f'<div style="text-align: center; margin-top: 20px;"><a href="{x_url}" target="_blank" class="action-btn btn-x">𝕏 SHARE YOUR DESTINY ON X</a></div>', unsafe_allow_html=True)
-
 
     # THE GENESIS (ABOUT US)
     st.markdown("---")
@@ -504,7 +518,7 @@ with tab_oracle:
 
     # FUEL THE ORACLE SECTION
     st.markdown("""
-    <div style="text-align: center; margin-bottom: 25px;">
+    <div style="text-align: center; margin-bottom: 25px; margin-top: 40px;">
         <h3 style="color: #00FFC2;">⚡ FUEL THE ORACLE</h3>
         <p style="opacity: 0.8; font-size: 0.95rem; max-width: 800px; margin: 0 auto; line-height: 1.6;">
             APOL is a fully independent, community-driven project built to protect human careers. 
@@ -519,18 +533,73 @@ with tab_oracle:
     with col_c2: st.caption("🔵 BASE / ETH"); st.code("0x9C16DF26c08e31cB0Aa2A74837A2c24cD08BFDa5", language="text")
     with col_c3: st.caption("🟠 BITCOIN"); st.code("bc1q2ksa57gx7f7tt5euezyku9su972742fye0t2mt", language="text")
 
-with tab_roadmap:
-    # ASCENSION ROADMAP
-    st.markdown("### 🗺️ APOL Ascension Roadmap")
+
+# ====================== METHODOLOGY TAB ======================
+with tab_methodology:
+    st.markdown("### 🔬 THE APOL METHODOLOGY: HOW THE ORACLE WORKS")
+    
     st.info("""
-    **🚀 Phase 1 – The Awakening (Current)** APOL is officially live. The powerful Oracle engine, rank analysis, professional PDF dossiers, and initial shields are active. We have shed the first light on thousands of careers.
-
-    **📄 Phase 2 – The Evolution (Within 2-4 Months)** Deep sector analysis, personalized ascension roadmaps, and the AI Interview Simulator are coming. Shields won't just protect you; they will elevate you to the next level.
-
-    **🌍 Phase 3 – The Genesis (4+ Months)** Live job market integration, Autonomous Career Agent, and a powerful ecosystem growing with the community. APOL will transcend being just a tool to become a true companion shaping your future.
+    **TL;DR** APOL 3.6 is not a random forecast generator. It is a live deterministic engine that calculates the survival probability of human careers against AI. We combine the *Karpathy AI Exposure Index* (a 342-occupation scientific dataset) with our proprietary *Human Shield Matrix*. The Oracle doesn't just tell you if AI can do your job; it calculates if society, law, and physics will *allow* AI to take your job.
     """)
+
+    st.markdown("""
+    #### 1. The Core Baseline: AI Exposure Index (0-10)
+    Every prophecy begins with raw, scientific task analysis. Derived from rigorous LLM-based evaluation of occupational duties, we score jobs on a 0-10 vulnerability scale.
+    * **The "Digital Confinement" Rule:** If an occupation can be executed entirely from a home office behind a computer screen (e.g., software development, copywriting, financial analysis), it sits directly in the eye of the AI storm (Score: 7-10). 
+    * **The "Physical Reality" Barrier:** Conversely, professions requiring physical dexterity, unpredictable environments, and real-time tactile interaction (e.g., plumbers, nurses, ironworkers) possess a natural, impenetrable barrier against current AI (Score: 0-3).
+
+    #### 2. The APOL Shield Protocols (Our Proprietary Modifiers)
+    Most models stop at "Exposure." APOL goes further by calculating human indispensability. An AI might pass the bar exam, but an AI cannot go to jail. We apply two critical defensive buffs:
+    * **🛡️ The Human Touch (+14 Points):** Jobs requiring deep human empathy, physical crisis management, and psychological reassurance (Surgeons, Police Officers, Nurses) receive a massive survival buff. Humans fundamentally crave human interaction in moments of vulnerability.
+    * **⚖️ Legal & Accountability Shield (+12 Points):** Jobs requiring legal signatures, fiduciary duty, and ultimate liability (CPAs, Judges, Notaries) are heavily shielded. Society requires a human neck on the line when things go wrong.
+
+    #### 3. Direct vs. Indirect Displacement (The Jevons Paradox)
+    The Oracle evaluates two layers of threat. **Direct Automation** is when an AI fully replaces a worker. But APOL also calculates **Indirect Displacement**. AI might not replace a Junior Analyst; instead, it makes a Senior Analyst 10x more productive, effectively eliminating the need to hire 9 new Junior Analysts. This compresses entry-level opportunities and widens the skill-wage gap.
+
+    #### 4. The APOL Survival Score Formula
+    Your final score out of 100 is calculated using our deterministic formula:  
+    **Survival Score = Base Score (100 - Exposure × 10) + Human Shield Bonus + Experience Buffer** * **Exposure:** The raw 0-10 vulnerability metric mapped to a 100-point scale.
+    * **Human Shield Bonus:** The +14 (Human Touch) and +12 (Legal) defensive buffs.
+    * **Experience Buffer:** An algorithmic addition (up to +9 points) based on your years of experience, recognizing that senior professionals rely more on accumulated wisdom than raw task execution.
+
+    #### 5. The 6-Dimensional Radar Matrix
+    The radar chart on your dossier isn't just for show. It dissects your risk profile into 6 distinct vectors. Here is what each dimension represents in the Oracle's evaluation:
+    * **🧟 Zombie Risk:** Measures your absolute baseline vulnerability to being completely automated out of the market.
+    * **🌊 The Abyss Risk:** Measures the likelihood of severe career disruption and structural displacement.
+    * **⚖️ Hybrid Fit:** Measures your capacity to merge human intuition with AI tools. This peaks when a role requires an equal balance of automation and human oversight.
+    * **⚔️ Captain Fit:** Measures your potential for leadership and strategic oversight roles where you command and direct AI agents.
+    * **🔮 Cyber-Oracle Fit:** Measures your alignment with highly specialized, tech-augmented human expertise.
+    * **🚀 New Genesis Fit:** The ultimate metric. Shows how completely indispensable your human core remains in a fully automated 2030s landscape.
+
+    #### 6. Known Limitations
+    APOL is a map of the battlefield, not a crystal ball. Breakthroughs in robotics (humanoid agents) could suddenly increase the exposure of physical jobs. Regulatory changes could artificially protect highly exposed digital jobs. The Oracle provides a projection based on current technological trajectories, not absolute financial or career advice.
+    """)
+
+
+# ====================== ROADMAP TAB ======================
+with tab_roadmap:
+    st.markdown("### 🗺️ APOL Ascension Roadmap")
+    
+    st.info("""
+    **🚀 Phase 1: The Awakening (Current Status)**
+    * **Scientific Calibration:** APOL is officially live, powered by the 342-occupation AI Exposure dataset and our proprietary Human Shield algorithms. 
+    * **The Oracle's Core:** The real-time evaluation engine, 6-dimensional risk matrices, and Executive Dossier generation are fully operational.
+    * **Mission:** We have shed the first light on the battlefield. You now know exactly where your career stands against the automation storm.
+
+    **🧠 Phase 2: The Evolution (Expected: Q3 2026)**
+    * **The AI Interview Simulator:** Shields won't just protect you; they must sharpen you. An interactive, voice-enabled AI agent that conducts highly technical, stress-inducing mock interviews tailored to your specific industry risk.
+    * **Dynamic Skill Arbitrage:** APOL will identify exactly which 2 or 3 micro-skills you need to acquire to upgrade your rank from *Hybrid* to *Captain*, or from *Abyss* to *New Genesis*.
+    * **Mission:** Transition from passive risk assessment to active career defense. 
+
+    **🌌 Phase 3: The Genesis (Expected: 2027)**
+    * **Autonomous Career Agent (ACA):** A persistent, private AI agent running 24/7 on your behalf. It will autonomously scan the global job market, match your shielded skills against emerging AI-resistant roles, and draft bespoke applications.
+    * **Live Market Integration:** Real-time API connections to global freelance and corporate job boards, tracking exact drops in demand (e.g., "Copywriting demand down 14% today") to warn you before the storm hits.
+    * **Mission:** APOL transcends being just a tool. It becomes a symbiotic digital companion, actively fighting for your economic survival.
+    """)
+    
     st.markdown("---")
-    # LEGAL & PRIVACY
+    
+    # LEGAL & PRIVACY 
     st.markdown("### ⚖️ Legal & Privacy")
     with st.expander("Privacy Policy"):
         st.write("""
@@ -566,4 +635,4 @@ with col_f2:
     </div>
     """, unsafe_allow_html=True)
 
-st.markdown("<p style='text-align: center; opacity: 0.15; margin-top: 30px; font-size: 0.75rem; letter-spacing: 3px;'>v3.6.0-stable</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; opacity: 0.15; margin-top: 30px; font-size: 0.75rem; letter-spacing: 3px;'>v3.6.0-stable | Karpathy-Enriched</p>", unsafe_allow_html=True)
