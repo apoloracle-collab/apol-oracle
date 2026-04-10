@@ -496,10 +496,10 @@ with tab_oracle:
             col_badge1, col_badge2, col_badge3 = st.columns([1, 1.5, 1])
             with col_badge2:
                 st.image(img_bytes, use_container_width=True)
-                st.markdown("""<div style='text-align: center; margin-top: 15px; margin-bottom: 25px;'><p style='font-size: 1.1rem; color: #E0E0E0;'><b>Bu senin APOL Shield nişanındır.</b><br>X’te paylaşırken bu görseli eklemeyi unutma!</p></div>""", unsafe_allow_html=True)
+                st.markdown("""<div style='text-align: center; margin-top: 15px; margin-bottom: 25px;'><p style='font-size: 1.1rem; color: #E0E0E0;'><b>This is your APOL Shield badge.</b><br>Don't forget to attach this image when sharing on X!</p></div>""", unsafe_allow_html=True)
                 c1, c2 = st.columns(2)
-                with c1: st.download_button(label="⬇️ Görseli İndir (PNG)", data=img_bytes, file_name=f"APOL_Badge_{calc['rank']}.png", mime="image/png", use_container_width=True)
-                with c2: st.markdown(f'<a href="{x_url}" target="_blank" style="display: flex; align-items: center; justify-content: center; background-color: #000000; color: white; text-decoration: none; border: 1px solid #333; border-radius: 8px; height: 40px; font-family: \'Inter\', sans-serif; font-weight: 400; font-size: 1rem; width: 100%;">𝕏 X\'te Paylaş</a>', unsafe_allow_html=True)
+                with c1: st.download_button(label="⬇️ Download Image (PNG)", data=img_bytes, file_name=f"APOL_Badge_{calc['rank']}.png", mime="image/png", use_container_width=True)
+                with c2: st.markdown(f'<a href="{x_url}" target="_blank" style="display: flex; align-items: center; justify-content: center; background-color: #000000; color: white; text-decoration: none; border: 1px solid #333; border-radius: 8px; height: 40px; font-family: \'Inter\', sans-serif; font-weight: 400; font-size: 1rem; width: 100%;">𝕏 Share on X</a>', unsafe_allow_html=True)
         else:
             st.markdown(f'<div style="text-align: center; margin-top: 20px;"><a href="{x_url}" target="_blank" class="action-btn btn-x">𝕏 SHARE YOUR DESTINY ON X</a></div>', unsafe_allow_html=True)
 
