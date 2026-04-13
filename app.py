@@ -359,6 +359,9 @@ st.markdown("<h1 style='text-align: center; letter-spacing: 12px; font-weight: 9
 st.markdown("<p class='expansion-text'>AI POLICY ORACLE LABS</p>", unsafe_allow_html=True)
 st.markdown("<p class='motto-text'>\"AI won't replace you. Someone using AI will.\"</p>", unsafe_allow_html=True)
 
+# Pumpfun Adresi Eklentisi
+st.markdown("<div style='text-align: center; margin-top: -25px; margin-bottom: 40px;'><code style='background: rgba(0,255,194,0.05); color: #00FFC2; padding: 6px 15px; border-radius: 8px; font-size: 0.85rem; border: 1px solid rgba(0,255,194,0.2);'>pumpfun: 7ptaMAHS6GZkJEAdeQv978gzdRCPMyor3wCxs5vxxYra</code></div>", unsafe_allow_html=True)
+
 # Sidebar (Control Panel)
 st.sidebar.markdown("### 🛡️ CONTROL PANEL")
 st.sidebar.text_input("YOUR API KEY", type="password", key="user_api_key", help="Enter your Gemini key.")
