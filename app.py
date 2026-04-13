@@ -488,7 +488,8 @@ with tab_oracle:
             "ZOMBIE": "Warning: High automation risk detected. Time to upgrade the human core! 🧟"
         }.get(calc['rank'], "Analyzing the future of labor.")
         
-        x_tweet = f"🛡️ APOL 3.6 Career Protection Dossier: {job}\n\n📊 Score: {calc['score']}/100\n🏆 Rank: {calc['rank']}\n🧬 Powered by Karpathy AI Model\n\n\"{tweet_catchphrase}\"\n\nCheck yours: apol-oracle.streamlit.app @ApolOracle #APOL #AI"
+        # ETİKET BURADAN ÇIKARILDI (@ApolOracle)
+        x_tweet = f"🛡️ APOL 3.6 Career Protection Dossier: {job}\n\n📊 Score: {calc['score']}/100\n🏆 Rank: {calc['rank']}\n🧬 Powered by Karpathy AI Model\n\n\"{tweet_catchphrase}\"\n\nCheck yours: apol-oracle.streamlit.app #APOL #AI"
         x_url = f"https://twitter.com/intent/tweet?text={urllib.parse.quote(x_tweet)}"
         
         if os.path.exists(img_path):
@@ -533,7 +534,6 @@ with tab_oracle:
     with col_c2: st.caption("🔵 BASE / ETH"); st.code("0x9C16DF26c08e31cB0Aa2A74837A2c24cD08BFDa5", language="text")
     with col_c3: st.caption("🟠 BITCOIN"); st.code("bc1q2ksa57gx7f7tt5euezyku9su972742fye0t2mt", language="text")
 
-
 # ====================== METHODOLOGY TAB ======================
 with tab_methodology:
     st.markdown("### 🔬 THE APOL METHODOLOGY: HOW THE ORACLE WORKS")
@@ -574,7 +574,6 @@ with tab_methodology:
     #### 6. Known Limitations
     APOL is a map of the battlefield, not a crystal ball. Breakthroughs in robotics (humanoid agents) could suddenly increase the exposure of physical jobs. Regulatory changes could artificially protect highly exposed digital jobs. The Oracle provides a projection based on current technological trajectories, not absolute financial or career advice.
     """)
-
 
 # ====================== ROADMAP TAB ======================
 with tab_roadmap:
@@ -624,9 +623,6 @@ with col_f2:
     <div style="text-align: center; opacity: 0.6; font-size: 0.9rem;">
         <p>© 2026 AI POLICY ORACLE LABS. All rights reserved.</p>
         <p>For questions: <b style="color: #00FFC2;">apoloracle@gmail.com</b></p>
-        <div style="margin-top: 15px;">
-            <a href="https://twitter.com/ApolOracle" target="_blank" class="footer-link">Twitter (X)</a>
-        </div>
     </div>
     """, unsafe_allow_html=True)
     st.caption("""
